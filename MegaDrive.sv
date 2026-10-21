@@ -66,8 +66,9 @@ video_freak video_freak
 (
 	.*,
 	.VGA_DE_IN(vga_de),
-	.ARX((!ar) ? arx : (ar - 1'd1)),
-	.ARY((!ar) ? ary : 12'd0),
+	// The decoded picture is the set's 4:3 raster.
+	.ARX((!ar) ? (use_composite ? 12'd4 : arx) : (ar - 1'd1)),
+	.ARY((!ar) ? (use_composite ? 12'd3 : ary) : 12'd0),
 	.CROP_SIZE((en216p & vcrop_en) ? 10'd216 : 10'd0),
 	.CROP_OFF(voff),
 	.SCALE(status[55:54])
@@ -95,14 +96,17 @@ localparam CONF_STR = {
 
 	"P1,Audio & Video;",
 	"P1O[49:48],Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
-	"P1O[3:1],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
+	"H9P1O[3:1],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"d5P1O[34],Vertical Crop,Disabled,216p(5x);",
 	"d5P1O[53:50],Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
 	"P1O[55:54],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"P1-;",
-	"P1O[30],320x224 Aspect,Original,Corrected;",
-	"P1O[29],Border,No,Yes;",
-	"P1O[46],Composite Blend,Off,On;",
+	"H8P1O[66:65],Composite Filter,Off,Budget TV,Premium TV;",
+	"h9P1O[69:67],Comp. Brightness,Japan,USA,More,Much More,Too Much;",
+	"h9P1O[71:70],Comp. Sharpness,Off,Low,Medium,High;",
+	"P1-;",
+	"H9P1O[30],320x224 Aspect,Original,Corrected;",
+	"H9P1O[29],Border,No,Yes;",
 	"P1O[10],CRAM Dots,Off,On;",
 	"P1-;",
 	"P1O[15:14],Audio Filter,Model 1,Model 2,Minimal,No Filter;",
@@ -217,6 +221,14 @@ assign CLK_VIDEO = clk_53m_v;
 ///////////////////////////////////////////////////
 
 wire[127:0] status;
+
+// Composite video through the CXA1145 encoder and the board's Y/C networks,
+// decoded by a modelled TV. NTSC only: the decoder is an NTSC set.
+// Budget TV: notch separation and a narrow chroma band. Premium TV: adaptive
+// comb and a wider chroma band.
+wire  [1:0] composite_set = status[66:65];
+wire        use_composite = (composite_set != 2'd0) && !PAL;
+wire        composite_premium = (composite_set == 2'd2);
 wire  [1:0] buttons;
 wire [11:0] joystick_0,joystick_1,joystick_2,joystick_3,joystick_4;
 wire  [7:0] joy0_x,joy0_y,joy1_x,joy1_y;
@@ -270,7 +282,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.status(status),
 	.status_in({status[127:8],region_req,status[5:0]}),
 	.status_set(region_set),
-	.status_menumask({tmss_loaded,status[13],en216p,!gun_mode,1'b0,status[8],~gg_available,~bk_ena}),
+	.status_menumask({use_composite,PAL,tmss_loaded,status[13],en216p,!gun_mode,1'b0,status[8],~gg_available,~bk_ena}),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_index(ioctl_index),
@@ -446,6 +458,7 @@ wire        vdp_intfield;
 wire        vdp_m2, vdp_m5, vdp_rs1;
 wire  [7:0] r,g,b;
 wire        hs, vs;
+wire        csync, sbcr;
 
 wire  [6:0] PA_d, PA_o, PB_d, PB_o, PC_d, PC_o;
 wire  [6:0] PA_i, PB_i, PC_i;
@@ -543,6 +556,8 @@ md_board md_board
 	.V_G(g),
 	.V_B(b),
 	.V_HS(hs),
+	.V_CS(csync),
+	.V_SBCR(sbcr),
 	.vdp_vsync2(vs),
 	
 	// audio
@@ -856,7 +871,6 @@ video_cond video_cond
 	.pal(PAL),
 	.border_en(status[29]),
 	.h40corr(status[30]),
-	.blender(status[46]),
 
 	.arx(arx),
 	.ary(ary),
@@ -874,30 +888,128 @@ video_cond video_cond
 	.vbl_out(vblank_c)
 );
 
+////////////////////////////  COMPOSITE  ////////////////////////////////
+
+// The VDP's DAC, C-SYNC and SBCR pins through the CXA1145 and the board's
+// Y/C networks to the AV jack, one sample per master clock on CLK_VIDEO.
+reg  [1:0] comp_rst_s = 2'b11;
+always @(posedge CLK_VIDEO) comp_rst_s <= {comp_rst_s[0], ~use_composite};
+wire       comp_reset = comp_rst_s[1];
+
+wire [8:0] cv_r2, cv_g2, cv_b2;
+wire [1:0] cv_s2;
+wire [5:0] cv_ang;
+
+md_cvbs_front md_cvbs_front
+(
+	.clk_md(clk_md),
+	.clk_vid(CLK_VIDEO),
+	.r(r),
+	.g(g),
+	.b(b),
+	.csync_n(csync),
+	.sbcr(sbcr),
+	.r2(cv_r2),
+	.g2(cv_g2),
+	.b2(cv_b2),
+	.s2(cv_s2),
+	.ang(cv_ang)
+);
+
+wire signed [23:0] cv_y, cv_c, cvbs;
+
+cxa1145 cxa1145
+(
+	.clk(CLK_VIDEO),
+	.reset(comp_reset),
+	.r2(cv_r2),
+	.g2(cv_g2),
+	.b2(cv_b2),
+	.s2(cv_s2),
+	.ang(cv_ang),
+	.y_out(cv_y),
+	.c_out(cv_c)
+);
+
+md_av_board md_av_board
+(
+	.clk(CLK_VIDEO),
+	.reset(comp_reset),
+	.y_in(cv_y),
+	.c_in(cv_c),
+	.cvbs(cvbs)
+);
+
+// Brightness moves the black point relative to blanking, Q2.13 volts. The
+// Mega Drive has no pedestal, so a set expecting the NTSC-M 7.5 IRE setup
+// crushes its darkest shades.
+wire [15:0] comp_brightness = status[69:67] == 3'd1 ? 16'hFE49 : status[69:67] == 3'd2 ? 16'd292 :
+	status[69:67] == 3'd3 ? 16'd643 : status[69:67] == 3'd4 ? 16'd936 : 16'd0;
+
+// The board leaves white at 0.645 V and sync at 0.264 V; the set's sync AGC
+// brings sync to 40 IRE, a gain of 1.084 that puts white at 0.700 V. 2856
+// maps 0.714 V to white, so the AGC'd set is contrast 3095.
+// 15 samples per subcarrier cycle, 3420 per line; 855 output pixels a line.
+// The comb's 1H delay is the set's 227.5 cycles (3412.5 samples): the
+// Mega Drive's lines are 228 cycles, so line-locked combing would cancel its
+// burst and chroma.
+wire comp_pix, comp_hs, comp_vs, comp_hb, comp_vb;
+wire [7:0] comp_r, comp_g, comp_b;
+
+composite_decoder #(.SPC(15), .HCNT_W(12), .LUMA_LP(8), .PK_SPAN(9), .PIX_DIV(4)) composite_decoder
+(
+	.clk(CLK_VIDEO),
+	.reset(comp_reset),
+	.ce(1'b1),
+	.comp(cvbs),
+	.sat(8'd128),
+	.hue(8'd0),
+	.chroma_trail(composite_premium ? 4'd2 : 4'd3),
+	.sharpness({status[71:70], 2'b00}),
+	.black_stretch(2'd0),
+	.brightness(comp_brightness),
+	.contrast(16'd3095),
+	.comb_mode(composite_premium ? 2'd2 : 2'd0),
+	.ce_out(),
+	.pix_out(comp_pix),
+	.hs_out(comp_hs),
+	.vs_out(comp_vs),
+	.hb_out(comp_hb),
+	.vb_out(comp_vb),
+	.r_out(comp_r),
+	.g_out(comp_g),
+	.b_out(comp_b)
+);
+
 wire [2:0] scale = status[3:1];
 wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
 
-assign VGA_SL = {~interlace,~interlace}&sl[1:0];
-assign VGA_F1 = f1;
+assign VGA_SL = use_composite ? 2'd0 : {~interlace,~interlace}&sl[1:0];
+assign VGA_F1 = use_composite ? 1'b0 : f1;
+
+wire lg_draw = lg_target && gun_mode && (~&status[44:43]);
 
 video_mixer #(.LINE_LENGTH(400), .GAMMA(1)) video_mixer
 (
 	.*,
 
-	.scandoubler(~interlace && (scale || forced_scandoubler)),
-	.hq2x(scale==1),
+	// The decoded stream is 13.4 MHz pixels on CLK_VIDEO, so the scandoubler
+	// and HQ2x stay off while it is selected.
+	.ce_pix(use_composite ? comp_pix : ce_pix),
+	.scandoubler(~use_composite && ~interlace && (scale || forced_scandoubler)),
+	.hq2x(~use_composite && scale==1),
 	.freeze_sync(),
 
 	.VGA_DE(vga_de),
-	.R((lg_target && gun_mode && (~&status[44:43])) ? {8{lg_target[0]}} : r_c),
-	.G((lg_target && gun_mode && (~&status[44:43])) ? {8{lg_target[1]}} : g_c),
-	.B((lg_target && gun_mode && (~&status[44:43])) ? {8{lg_target[2]}} : b_c),
+	.R(use_composite ? comp_r : lg_draw ? {8{lg_target[0]}} : r_c),
+	.G(use_composite ? comp_g : lg_draw ? {8{lg_target[1]}} : g_c),
+	.B(use_composite ? comp_b : lg_draw ? {8{lg_target[2]}} : b_c),
 
 	// Positive pulses.
-	.HSync(hs_c),
-	.VSync(vs_c),
-	.HBlank(hblank_c),
-	.VBlank(vblank_c)
+	.HSync(use_composite ? comp_hs : hs_c),
+	.VSync(use_composite ? comp_vs : vs_c),
+	.HBlank(use_composite ? comp_hb : hblank_c),
+	.VBlank(use_composite ? comp_vb : vblank_c)
 );
 
 

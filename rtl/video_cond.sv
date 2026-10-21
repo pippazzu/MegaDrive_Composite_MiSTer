@@ -38,7 +38,6 @@ module video_cond
 	input             pal,
 	input             border_en,
 	input             h40corr,
-	input             blender,
 
 	output reg [11:0] arx,
 	output reg [11:0] ary,
@@ -201,27 +200,7 @@ video_cleaner cleaner
 wire [7:0] r_c, g_c, b_c;
 wire hs_c,vs_c,hblank_c,vblank_c;
 
-cofi coffee
-(
-	.clk(clk),
-	.pix_ce(ce_pix),
-	.enable(blender),
-
-	.hblank(hblank_c),
-	.vblank(vblank_c),
-	.hs(hs_c),
-	.vs(vs_c),
-	.red(r_c),
-	.green(g_c),
-	.blue(b_c),
-
-	.hblank_out(hbl_out),
-	.vblank_out(vbl_out),
-	.hs_out(hs_out),
-	.vs_out(vs_out),
-	.red_out(r_out),
-	.green_out(g_out),
-	.blue_out(b_out)
-);
+assign {r_out, g_out, b_out} = {r_c, g_c, b_c};
+assign {hs_out, vs_out, hbl_out, vbl_out} = {hs_c, vs_c, hblank_c, vblank_c};
 
 endmodule

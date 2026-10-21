@@ -93,6 +93,7 @@ module md_board
 	// video
 	output [7:0] V_R, V_G, V_B,
 	output V_HS, V_VS, V_CS,
+	output V_SBCR, // subcarrier, MCLK/15 NTSC or MCLK/12 PAL
 	
 	// audio
 	output [15:0] A_L,
@@ -880,6 +881,7 @@ module md_board
 	assign V_VS = VSYNC;
 	assign V_HS = HSYNC;
 	assign V_CS = CSYNC;
+	assign V_SBCR = SBCR;
 	
 	assign SRES = ~ext_reset;
 	
