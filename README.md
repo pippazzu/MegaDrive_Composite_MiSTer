@@ -76,7 +76,7 @@ What is modelled, in order:
 Not modelled: the full-screen "rainbow banding" some Model 1 boards show, which comes from layout
 crosstalk with no published measurements; PAL (the decoder is an NTSC set).
 
-The scandoubler, HQ2x, Border and 320x224 Aspect options do not apply while composite is on.
+The Border and 320x224 Aspect options do not apply while composite is on. The scandoubler, HQ2x, scanline effects and MiSTer's Y/C output are not built into this core, which frees about 1,100 logic cells and 14 memory blocks; the picture leaves at the console's own line rate, which suits a PVM or other 15 kHz RGB display and the HDMI scaler, but a 31 kHz VGA monitor on the analog output gets no line doubling.
 
 ## Additional features
 
