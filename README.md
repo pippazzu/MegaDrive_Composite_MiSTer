@@ -55,7 +55,7 @@ What is modelled, in order:
    100 pF, a 63.9° lag that is carried into the modulators.
 3. **The board's Y/C networks**, from Sega's NTSC schematics (Model 1, and the Model 2 CXA1145M parts
    list) with the topology confirmed against the PAL-G maintenance manual:
-   * luma: R27 1.2k into L3 100 µH ∥ C35 18 pF, then C34 180 pF and R29 1k at Y IN — the "delay line"
+   * luma: R27 1.2k into L3 100 µH ∥ C35 12 pF, then C34 180 pF and R29 1k at Y IN — the "delay line"
      is a low-pass with a trap near 3.75 MHz, which is why dithering blends on a Mega Drive;
    * chroma: R28 1.2k into L5 12 µH ∥ C37 180 pF ∥ R26 330 Ω, a broad band-pass around 3.4 MHz.
 

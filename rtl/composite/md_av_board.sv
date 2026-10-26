@@ -1,14 +1,15 @@
 // Mega Drive NTSC board networks between the CXA1145's Y/C outputs and its
 // Y/C MIX inputs, and the resulting composite video at the AV jack.
 //
-//   Luma   Y OUT - R27 1.2k - [L3 100uH || C35 18pF] - Y IN
+//   Luma   Y OUT - R27 1.2k - [L3 100uH || C35 12pF] - Y IN
 //                                                  Y IN - C34 180pF - GND
 //                                                  Y IN - R29 1k    - VREF
 //   Chroma C OUT - R28 1.2k - node, node - C33 0.01uF - C IN
 //                             node - L5 12uH, C37 180pF, R26 330 - GND
 //
-// Sega Model 1 NTSC schematic and the Model 2 CXA1145M parts list, topology as
-// in the PAL-G maintenance manual. Y IN and C IN are base inputs and load
+// Sega Model 1 NTSC schematic and the Model 2 CXA1145M parts list, topology and C35
+// as in the PAL-G maintenance manual (parts list: C35 12pF; the NTSC schematic's 18pF
+// leaves too little 3-4 MHz detail: a measured NTSC Model 1 passes about twice as much). Y IN and C IN are base inputs and load
 // nothing; the 0.01 uF coupling and VREF's 10 uF are shorts at video rates.
 //
 // Each network is the exact zero-order-hold discretisation of its state
@@ -29,18 +30,18 @@ module md_av_board (
 );
 
 // Luma: states {tank voltage, L3 current x 1k, Y IN voltage}.
-localparam signed [17:0] LA00 =  18'sd25368;
-localparam signed [17:0] LA01 = -18'sd44531;
-localparam signed [17:0] LA02 = -18'sd33309;
-localparam signed [17:0] LA10 =  18'sd8016;
-localparam signed [17:0] LA11 =  18'sd60750;
-localparam signed [17:0] LA12 = -18'sd3731;
-localparam signed [17:0] LA20 = -18'sd3331;
-localparam signed [17:0] LA21 =  18'sd2073;
-localparam signed [17:0] LA22 =  18'sd55826;
-localparam signed [17:0] LB0  =  18'sd35382;
-localparam signed [17:0] LB1  =  18'sd3872;
-localparam signed [17:0] LB2  =  18'sd3471;
+localparam signed [17:0] LA00 =   18'sd15324;
+localparam signed [17:0] LA01 = -18'sd55386;
+localparam signed [17:0] LA02 = -18'sd41131;
+localparam signed [17:0] LA10 =   18'sd6646;
+localparam signed [17:0] LA11 =   18'sd59195;
+localparam signed [17:0] LA12 = -18'sd4933;
+localparam signed [17:0] LA20 = -18'sd2742;
+localparam signed [17:0] LA21 =   18'sd2741;
+localparam signed [17:0] LA22 =   18'sd56342;
+localparam signed [17:0] LB0  =   18'sd43871;
+localparam signed [17:0] LB1  =   18'sd5125;
+localparam signed [17:0] LB2  =   18'sd2934;
 
 // Chroma: states {L5 current x 1k, node voltage}.
 localparam signed [17:0] CA00 =  18'sd60970;
