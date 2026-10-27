@@ -146,19 +146,45 @@ function automatic signed [15:0] sat16(input signed [17:0] v);
 	else                      sat16 =  v[15:0];
 endfunction
 
-logic signed [23:0] tip;
+logic signed [27:0] tip;
 logic sync_l, sync_d;
 logic [HCNT_W-1:0] hcnt, front_at;
 logic [8:0] vline;
 logic vs_i, vb_i;
 
+// The sync separator sees the signal averaged over one subcarrier period, as a
+// set's does through its low-pass: saturated colours swing the composite signal
+// down to the sync tip (a 32X's red or green against black reaches -0.30 V, sync
+// is -0.30 V), and a slicer on the raw signal counts every such dip as a line
+// start. One period of boxcar removes the carrier whatever its amplitude.
+// The sum is kept as a sum (SPC times the average), with the slice and the tip's
+// decay scaled to match; the average lags by (SPC - 1) / 2 samples, the same for
+// both edges of sync.
+// The averaged edges are late by 9 samples (leading) and 8 (trailing) of 15: the
+// counters that follow them start at those counts, so everything keeps the timing
+// it had with the raw slice.
+localparam integer LEAD_LAG  = (SPC * 3) / 5;
+localparam integer TRAIL_LAG = (SPC * 8) / 15;
+
+logic signed [23:0] sy_dl [SPC];
+logic signed [27:0] sy_sum;
+
 always_ff @(posedge clk) if (reset) begin
-	tip <= 24'sh7fffff;
+	for (int i = 0; i < SPC; i++) sy_dl[i] <= 24'sd0;
+	sy_sum <= 28'sd0;
+end else if (ce) begin
+	sy_dl[0] <= comp;
+	for (int i = 1; i < SPC; i++) sy_dl[i] <= sy_dl[i - 1];
+	sy_sum <= sy_sum + comp - sy_dl[SPC - 1];
+end
+
+always_ff @(posedge clk) if (reset) begin
+	tip <= 28'sh7ffffff;
 	sync_l <= 1'b0;
 	sync_d <= 1'b0;
 end else if (ce) begin
-	tip <= (comp < tip) ? comp : tip + TIP_DECAY;
-	sync_l <= comp < tip + SLICE;
+	tip <= (sy_sum < tip) ? sy_sum : tip + 28'(TIP_DECAY * SPC);
+	sync_l <= sy_sum < tip + 28'(SLICE * SPC);
 	sync_d <= sync_l;
 end
 
@@ -183,7 +209,7 @@ always_ff @(posedge clk) if (reset) begin
 end else if (ce) begin
 	if (line_start) sync_seen <= 1'b0;
 	else if (sync_d && !sync_l) sync_seen <= 1'b1;
-	if (sync_d && !sync_l) spos <= 10'd0;
+	if (sync_d && !sync_l) spos <= 10'(TRAIL_LAG);
 	else if (~&spos) spos <= spos + 10'd1;
 end
 
@@ -201,7 +227,7 @@ always_ff @(posedge clk) if (reset) begin
 	vb_i <= 1'b0;
 end else if (ce) begin
 	if (line_start) begin
-		hcnt <= {HCNT_W{1'b0}};
+		hcnt <= HCNT_W'(LEAD_LAG);
 		front_at <= hcnt + 1'b1 - FRONT_PORCH;
 	end else if (~&hcnt) begin
 		hcnt <= hcnt + 1'b1;
@@ -231,7 +257,7 @@ always_ff @(posedge clk) if (reset) begin
 	black <= 24'sd0;
 	c16 <= 16'sd0;
 end else if (ce) begin
-	if (hpos == 10'd0)   black_acc <= 29'sd0;
+	if (hpos == 10'(LEAD_LAG))   black_acc <= 29'sd0;
 	else if (in_clamp)   black_acc <= black_acc + {{5{comp[23]}}, comp};
 	if (clamp_fin)       black <= black_acc[27:CLAMP_SH];
 
@@ -543,7 +569,7 @@ always_ff @(posedge clk) if (reset) begin
 	inv <= 16'd0;
 	colour_ok <= 1'b0;
 end else if (ce) begin
-	if (hpos == 10'd0) begin
+	if (hpos == 10'(LEAD_LAG)) begin
 		ib_acc <= 23'sd0;
 		qb_acc <= 23'sd0;
 	end
