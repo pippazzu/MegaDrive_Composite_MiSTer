@@ -206,20 +206,29 @@ reg signed [34:0] lp0, lp1, lp2, lp3;      // state in 1/256
 wire signed [26:0] u_p = $signed(u_m[34:16]);
 wire signed [26:0] v_p = $signed(v_m[34:16]);
 
+// A register after each section keeps every path short; the luma and chroma
+// wait the same four clocks below, so only the latency changes.
+reg  signed [26:0] x1, x2, x3, o3r;
+
 wire signed [26:0] o0 = cin - 27'(lp0 >>> 8);
-wire signed [26:0] o1 = o0  - 27'(lp1 >>> 8);
-wire signed [26:0] o2 = o1  - 27'(lp2 >>> 8);
-wire signed [26:0] o3 = o2  - 27'(lp3 >>> 8);
+wire signed [26:0] o1 = x1  - 27'(lp1 >>> 8);
+wire signed [26:0] o2 = x2  - 27'(lp2 >>> 8);
+wire signed [26:0] o3 = x3  - 27'(lp3 >>> 8);
 
 always @(posedge clk) begin
 	if (reset || !HFCORR) begin
 		cin <= 27'sd0;
+		{x1, x2, x3, o3r} <= {4{27'sd0}};
 		lp0 <= 35'sd0;
 		lp1 <= 35'sd0;
 		lp2 <= 35'sd0;
 		lp3 <= 35'sd0;
 	end else begin
 		cin <= -((u_p <<< 4) + (u_p <<< 2) + u_p + (v_p <<< 3) + v_p);
+		x1  <= o0;
+		x2  <= o1;
+		x3  <= o2;
+		o3r <= o3;
 		lp0 <= lp0 + (35'(o0) <<< 6) + (35'(o0) <<< 4);
 		lp1 <= lp1 + (35'(o1) <<< 6) + (35'(o1) <<< 4);
 		lp2 <= lp2 + (35'(o2) <<< 6) + (35'(o2) <<< 4);
@@ -233,9 +242,25 @@ end
 wire signed [31:0] c_m = u2 * sin2 + v2 * cos2;
 /* verilator lint_on UNUSEDSIGNAL */
 
+reg signed [23:0] y_d [4];
+reg signed [23:0] c_d [4];
+
 always @(posedge clk) begin
-	y_out <= y2 + o3[23:0];
-	c_out <= c_m[29:6];
+	if (reset) begin
+		for (int i = 0; i < 4; i++) begin
+			y_d[i] <= 24'sd0;
+			c_d[i] <= 24'sd0;
+		end
+	end else begin
+		y_d[0] <= y2;
+		c_d[0] <= c_m[29:6];
+		for (int i = 1; i < 4; i++) begin
+			y_d[i] <= y_d[i-1];
+			c_d[i] <= c_d[i-1];
+		end
+	end
+	y_out <= y_d[3] + o3r[23:0];
+	c_out <= c_d[3];
 end
 
 endmodule
