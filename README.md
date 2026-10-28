@@ -34,60 +34,24 @@ Core supports SMS carts with the same compatibility level as original MegaDrive 
 
 ## Composite video
 
-**Audio & Video → Composite Filter** (JP and US regions) replaces the RGB picture with the console's
-composite video, generated the way a Model 1 / Model 2 board makes it and shown through a modelled
-NTSC television. Choose **Budget TV** (notch Y/C separation, narrow chroma) or **Premium TV**
-(adaptive comb, wider chroma), then set **Comp. Brightness** (Japan has no 7.5 IRE setup, USA crushes
-the darkest shades the way a US set does, the others lift the picture) and **Comp. Sharpness**.
-The picture streams through with the beam: there is no frame buffer and the added delay is under a
-microsecond.
+**Audio & Video → Composite Filter** (JP and US regions) shows the console's composite video, as a
+Model 1 board makes it, on a modelled NTSC TV:
 
-What is modelled, in order:
+* **Composite Filter**: Off / Budget TV (notch filter, softer colour) / Premium TV (comb filter,
+  sharper colour).
+* **Comp. Brightness**: Japan (the console's own black) / USA (a US set: the darkest shades crush to
+  black) / More / Much More / Too Much.
+* **Comp. Sharpness**: Off / Low / Medium / High (the TV's sharpness knob).
 
-1. **VDP pins.** The DAC level of each colour, C-SYNC and the SBCR subcarrier come straight from the
-   Nuked YM7101 netlist, sampled at both edges of the 53.69 MHz master clock. SBCR is MCLK/15, so the
-   subcarrier phase against every pixel edge is exact; that phase decides the colours of the rainbow
-   on dithered patterns.
-2. **Sony CXA1145 encoder** (data sheet typical values): RGB inputs clamped during the burst flag,
-   Y = 0.299 R + 0.587 G + 0.114 B with white at 0.71 V and sync at 0.29 V, no setup pedestal,
-   0.493 (B-Y) / 0.877 (R-Y) modulators, a 0.29 Vp-p burst at 180° from 0.5 µs after the C-SYNC
-   rising edge for 2.75 µs, and a half-H killer. The subcarrier reaches X IN through 10 kΩ / 1 kΩ and
-   100 pF, a 63.9° lag that is carried into the modulators.
+No frame buffer: the added delay is under a microsecond. Dithering blends and rainbows as on a real
+console. On HDMI, checkerboard dither shows fine "teeth" that change colour from line to line; a real
+console through a RetroTINK shows the same.
 
-   One term is not from the data sheet. On a real Model 1 (VA6), fine coloured detail reaches the
-   luma at a strength that depends on the colour: a 1-pixel stripe (3.36 MHz) is 2.9× the plain
-   model in blue, 1.2× in red and 0.7× in green (1.9× / 1.1× in blue at 2.7 / 1.7 MHz). The encoder
-   adds −(21 (B−Y) + 9 (R−Y)), scaled, through four one-pole high-passes, to the luma. That halves
-   the mismatch (0.034 → 0.015 Vp-p) and leaves flat colours and colour-bar edges unchanged. It is
-   fitted to measurements of one console, not derived from a circuit.
-3. **The board's Y/C networks**, from Sega's NTSC schematics (Model 1, and the Model 2 CXA1145M parts
-   list) with the topology confirmed against the PAL-G maintenance manual:
-   * luma: R27 1.2k into L3 100 µH ∥ C35 12 pF, then C34 180 pF and R29 1k at Y IN — the "delay line"
-     is a low-pass with a trap near 4.6 MHz, which is why dithering blends on a Mega Drive. C35 is
-     12 pF as in the PAL-G parts list; two real NTSC Model 1s pass about twice as much of a 3.4 MHz
-     stripe as the 18 pF of some schematics would;
-   * chroma: R28 1.2k into L5 12 µH ∥ C37 180 pF ∥ R26 330 Ω, a broad band-pass around 3.4 MHz.
+This core is for 15 kHz RGB CRTs and HDMI. The scandoubler, HQ2x, scanline effects and Y/C output are
+removed, and so is Composite Blend (the composite path does that blending itself). For 31 kHz VGA or
+S-video, use the main core.
 
-   Both are solved as exact zero-order-hold state-space systems at the master clock.
-4. **The television**: Kitrinx's composite decoder from the NES core (MIT), run at 15 samples per
-   subcarrier cycle. A real set's sync AGC is applied as a fixed contrast, since the board leaves white
-   at 0.645 V and sync at 0.264 V. Two things a real set does differently from that decoder matter
-   for the Mega Drive, and are modelled the way a set does them:
-   * the VDP's horizontal sync is 5.83 µs, not 4.7, so the burst gate and black clamp are timed
-     from the trailing edge of sync (as a set's burst gate pulse is), not from its leading edge,
-     and chroma stays blanked until the back porch is over, so the long burst never shows;
-   * a Mega Drive line is exactly 228 subcarrier cycles, not 227.5, so the Premium TV comb uses a
-     set's fixed 227.5-cycle 1H delay: the previous line half a cycle along still carries inverted
-     chroma, where a line-locked comb would cancel the burst and the colour.
-
-   The sync separator averages the signal over one subcarrier cycle before slicing it, as a set's
-   does, so the carrier on saturated colours is never taken for sync. With a 4.7 µs sync and standard NTSC timing, the burst gate and the comb behave exactly as the
-   original.
-
-Not modelled: the full-screen "rainbow banding" some Model 1 boards show, which comes from layout
-crosstalk with no published measurements; PAL (the decoder is an NTSC set).
-
-The Border and 320x224 Aspect options do not apply while composite is on. The scandoubler, HQ2x, scanline effects and MiSTer's Y/C output are not built into this core, which frees about 1,100 logic cells and 14 memory blocks; the picture leaves at the console's own line rate, which suits a PVM or other 15 kHz RGB display and the HDMI scaler, but a 31 kHz VGA monitor on the analog output gets no line doubling.
+How it is modelled and measured against real consoles: [docs/composite.md](docs/composite.md).
 
 ## Additional features
 
