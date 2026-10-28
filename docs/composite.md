@@ -1,6 +1,6 @@
 # Composite video: technical notes
 
-## What the console does, and how we know
+## Model 1 composite output (CXA1145)
 
 Sources: the Nuked YM7101 netlist (traced from the VDP die), the Sony CXA1145 data sheet, Sega's NTSC
 schematics (Model 1, and the Model 2 CXA1145M parts list), the PAL-G maintenance manual. Measured with
