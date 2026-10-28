@@ -48,24 +48,43 @@ measured).
 4. **Fine coloured detail** (item 4 above): the encoder adds −(21 (B−Y) + 9 (R−Y)), scaled and passed
    through four one-pole high-passes, to the luma. This halves the mismatch (0.034 → 0.015 Vp-p) and
    leaves flat colours and colour-bar edges unchanged. A fit to one console, not a circuit model.
-5. **Composite filters**: Kitrinx's composite decoder from the NES core (MIT licence), run at 15
-   samples per subcarrier cycle. The sync AGC is a fixed contrast, because the board leaves white at
-   0.645 V and sync at 0.264 V. Where a real set differs from that decoder in a way that matters for
-   the Mega Drive, the set's behaviour is used:
-   * the burst gate and black clamp are timed from the trailing edge of the 5.83 µs sync, as a set's
-     burst gate pulse is, and chroma stays blanked through the back porch;
-   * the Premium TV comb uses a set's fixed 227.5-cycle delay; a comb comparing whole 228-cycle lines
-     would cancel the burst;
-   * the sync separator averages over one subcarrier cycle before slicing, so saturated colours are
-     never taken for sync.
-
-   With a 4.7 µs sync and standard NTSC timing, the decoder behaves exactly as the original.
+5. **Composite filters**: Kitrinx's composite decoder from the NES core, run at 15 samples per
+   subcarrier cycle, with the changes listed below. Its contrast input is fixed at what a set's
+   sync AGC gives for this console's sync level.
 
 Not implemented: interlaced sync, PAL.
 
 In simulation (Icarus Verilog), the encoder and board filters match a floating-point model of the
 circuit to within 0.1 mV. The whole Nuked console running a test card through the composite path
 gives [composite_testcard.png](composite_testcard.png).
+
+## Changes to Kitrinx's composite decoder
+
+The decoder is Kitrinx's from the NES core (MIT licence; the changes are MIT too), in
+`rtl/composite/composite_decoder.sv`. It is the same file in the Mega Drive, Mega CD and 32X cores.
+
+* **Burst gate and black clamp** are timed from the trailing edge of sync, as a set's burst gate
+  pulse is, instead of from the leading edge. The Mega Drive's sync is 5.83 µs wide, so gates timed
+  from the leading edge for a 4.7 µs sync would land inside it. With a 4.7 µs sync both still fall
+  6.0 and 8.5 µs after the leading edge, as before.
+* **Chroma is blanked** until the back porch is over (3.8 µs after sync ends), as a set blanks it
+  through horizontal blanking, so the long burst is never shown.
+* **Premium TV comb** uses a set's fixed 227.5-cycle delay instead of one line of the source. Mega
+  Drive lines are 228 cycles, so a delay of one source line would meet chroma in phase and cancel
+  the burst and the colour.
+* **Sync separator** slices the signal averaged over one subcarrier cycle, as a set's does through
+  its low-pass, instead of the raw signal. On a 32X, saturated colours swing the signal down to the
+  sync tip (100% red against black: −0.297 V; sync tip: −0.30 V). The raw slicer counted those dips
+  as line starts and tore the picture. The average's delay is taken back out, so all timing is as
+  before; 0 of 84 pairs of full-strength colours now give a false line start.
+* **Samples per cycle**: the core runs the decoder at 15 samples per subcarrier cycle (odd). The
+  notch's half-cycle delay is then the mean of the two samples around it, and the comb's half-sample
+  delay likewise.
+* Not changing the picture: the sharpness filter's tap spacing is a parameter, two products are
+  folded into one each (same results), and the comb's line store is a RAM inside the decoder rather
+  than the core's dpram.
+
+With a 4.7 µs sync and standard NTSC timing, the decoder gives the same picture as the original.
 
 ## Build
 
