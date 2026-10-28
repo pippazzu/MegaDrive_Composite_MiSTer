@@ -1,8 +1,12 @@
-# Nuked-MD port for MiSTer
+# Nuked-MD port for MiSTer, with composite video
 
 ![nukedmd_logo](rtl/nuked-md/nukedmd_logo.png)
 
 [Original Nuked-MD repository](https://github.com/nukeykt/Nuked-MD-FPGA)
+
+This fork adds the console's composite video: the picture a Model 1 Mega Drive sends to a TV
+through its AV cable, shown on a modelled NTSC TV, with dithering and rainbows as on the real
+console. See [Composite video](#composite-video).
 
 ## Installing
 copy rbf to root of SD card. Put some ROMs (.BIN/.GEN/.MD/.SMS) into MegaDrive folder
@@ -34,8 +38,13 @@ Core supports SMS carts with the same compatibility level as original MegaDrive 
 
 ## Composite video
 
-**Audio & Video → Composite Filter** (JP and US regions) shows the console's composite video, as a
-Model 1 board makes it, on a modelled NTSC TV:
+It is made the way Kitrinx's NES core does it, from the real signal chain: the
+video chip's own pins from the Nuked netlist, the board's Sony CXA1145 encoder from its data
+sheet, Sega's filter networks around it from the schematics, then a TV (Kitrinx's composite
+decoder). It was checked with an oscilloscope against two real Model 1 consoles; how strongly fine
+coloured detail reaches the picture is fitted to those measurements. Technical notes: [docs/composite.md](docs/composite.md).
+
+Options, in **Audio & Video** (JP and US regions):
 
 * **Composite Filter**: Off / Budget TV (notch filter, softer colour) / Premium TV (comb filter,
   sharper colour).
@@ -43,15 +52,12 @@ Model 1 board makes it, on a modelled NTSC TV:
   black) / More / Much More / Too Much.
 * **Comp. Sharpness**: Off / Low / Medium / High (the TV's sharpness knob).
 
-No frame buffer: the added delay is under a microsecond. Dithering blends and rainbows as on a real
-console. On HDMI, checkerboard dither shows fine "teeth" that change colour from line to line; a real
-console through a RetroTINK shows the same.
+No frame buffer: the added delay is under a microsecond. On HDMI, checkerboard dither shows fine
+"teeth" that change colour from line to line; a real console through a RetroTINK shows the same.
 
 This core is for 15 kHz RGB CRTs and HDMI. The scandoubler, HQ2x, scanline effects and Y/C output are
 removed, and so is Composite Blend (the composite path does that blending itself). For 31 kHz VGA or
 S-video, use the main core.
-
-How it is modelled and measured against real consoles: [docs/composite.md](docs/composite.md).
 
 ## Additional features
 
