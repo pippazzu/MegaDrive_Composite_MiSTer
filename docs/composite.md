@@ -1,7 +1,7 @@
 # Composite video: technical notes
 
 The composite path follows the real signal chain: the VDP's pins, the board's encoder and filter
-networks, then a TV. It works the same way as Kitrinx's NES core.
+networks, then Kitrinx's composite filters, as in Kitrinx's NES core.
 
 ## What is modelled
 
@@ -30,7 +30,7 @@ networks, then a TV. It works the same way as Kitrinx's NES core.
    * chroma: R28 1.2k into L5 12 µH ∥ C37 180 pF ∥ R26 330 Ω, a broad band-pass around 3.4 MHz.
 
    Both networks are solved as exact zero-order-hold state-space systems at the master clock.
-4. **TV**: Kitrinx's composite decoder from the NES core (MIT licence), run at 15 samples per
+4. **Composite filters**: Kitrinx's composite decoder from the NES core (MIT licence), run at 15 samples per
    subcarrier cycle. The sync AGC is a fixed contrast, because the board leaves white at 0.645 V and
    sync at 0.264 V. Where a real set differs from that decoder in a way that matters for the Mega
    Drive, the set's behaviour is modelled:

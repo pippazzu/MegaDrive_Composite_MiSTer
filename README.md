@@ -4,8 +4,8 @@
 
 [Original Nuked-MD repository](https://github.com/nukeykt/Nuked-MD-FPGA)
 
-This fork adds the console's composite video: the picture a Model 1 Mega Drive sends to a TV
-through its AV cable, shown on a modelled NTSC TV. See [Composite video](#composite-video).
+This fork adds the console's composite video: the picture a Model 1 Mega Drive sends through its AV
+cable, decoded with Kitrinx's composite filters. See [Composite video](#composite-video).
 
 ## Installing
 copy rbf to root of SD card. Put some ROMs (.BIN/.GEN/.MD/.SMS) into MegaDrive folder
@@ -39,7 +39,7 @@ Core supports SMS carts with the same compatibility level as original MegaDrive 
 
 Based on Kitrinx's NES core implementation, measured against two real Model 1 consoles (VA6 US, VA4
 Japan) with an oscilloscope. Video chip pins from the Nuked netlist, Sony CXA1145 encoder from its
-data sheet, Sega's board filters from the schematics, Kitrinx's composite decoder as the TV. One
+data sheet, Sega's board filters from the schematics, decoded with Kitrinx's composite filters. One
 term, for fine coloured detail, is fitted to the measurements. Runs in step with the video signal,
 adding under a microsecond of delay. Technical notes: [docs/composite.md](docs/composite.md).
 
