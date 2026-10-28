@@ -183,6 +183,50 @@ always @(posedge clk) begin
 	cos2 <= cos1;
 end
 
+// ------------------------------------------------------------ stripe tone
+
+// Measured on a real console (a VA6 at the AV jack): a stripe of one colour
+// gives a tone at the stripe frequency that the luma weights do not explain.
+// At 3.36 MHz (one-pixel stripes) blue has 2.9 times the tone, green 0.7 and
+// red 1.2 of what 0.299 R + 0.587 G + 0.114 B predicts; at 1.7 MHz all three
+// agree, and white is unchanged. The tones of mixed colours add up channel by
+// channel. A term in the luma that is zero for grey and grows steeply above
+// 2 MHz reproduces the nine measurements to the noise of the captures:
+//
+//   -(21 (B-Y) + 9 (R-Y)) through four one-pole high-passes, 80/256 per clock
+//
+// It is an empirical fit at three frequencies, not a model of the circuit;
+// the shape above 3.4 MHz is extrapolated. The burst is not part of it.
+
+parameter HFCORR = 1;
+
+reg signed [26:0] cin;
+reg signed [34:0] lp0, lp1, lp2, lp3;      // state in 1/256
+
+wire signed [26:0] u_p = $signed(u_m[34:16]);
+wire signed [26:0] v_p = $signed(v_m[34:16]);
+
+wire signed [26:0] o0 = cin - 27'(lp0 >>> 8);
+wire signed [26:0] o1 = o0  - 27'(lp1 >>> 8);
+wire signed [26:0] o2 = o1  - 27'(lp2 >>> 8);
+wire signed [26:0] o3 = o2  - 27'(lp3 >>> 8);
+
+always @(posedge clk) begin
+	if (reset || !HFCORR) begin
+		cin <= 27'sd0;
+		lp0 <= 35'sd0;
+		lp1 <= 35'sd0;
+		lp2 <= 35'sd0;
+		lp3 <= 35'sd0;
+	end else begin
+		cin <= -((u_p <<< 4) + (u_p <<< 2) + u_p + (v_p <<< 3) + v_p);
+		lp0 <= lp0 + (35'(o0) <<< 6) + (35'(o0) <<< 4);
+		lp1 <= lp1 + (35'(o1) <<< 6) + (35'(o1) <<< 4);
+		lp2 <= lp2 + (35'(o2) <<< 6) + (35'(o2) <<< 4);
+		lp3 <= lp3 + (35'(o3) <<< 6) + (35'(o3) <<< 4);
+	end
+end
+
 // ------------------------------------------------------------ modulators
 
 /* verilator lint_off UNUSEDSIGNAL */
@@ -190,7 +234,7 @@ wire signed [31:0] c_m = u2 * sin2 + v2 * cos2;
 /* verilator lint_on UNUSEDSIGNAL */
 
 always @(posedge clk) begin
-	y_out <= y2;
+	y_out <= y2 + o3[23:0];
 	c_out <= c_m[29:6];
 end
 
