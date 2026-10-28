@@ -53,10 +53,19 @@ What is modelled, in order:
    0.493 (B-Y) / 0.877 (R-Y) modulators, a 0.29 Vp-p burst at 180° from 0.5 µs after the C-SYNC
    rising edge for 2.75 µs, and a half-H killer. The subcarrier reaches X IN through 10 kΩ / 1 kΩ and
    100 pF, a 63.9° lag that is carried into the modulators.
+
+   One term is not from the data sheet. On a real Model 1 (VA6), fine coloured detail reaches the
+   luma at a strength that depends on the colour: a 1-pixel stripe (3.36 MHz) is 2.9× the plain
+   model in blue, 1.2× in red and 0.7× in green (1.9× / 1.1× in blue at 2.7 / 1.7 MHz). The encoder
+   adds −(21 (B−Y) + 9 (R−Y)), scaled, through four one-pole high-passes, to the luma. That halves
+   the mismatch (0.034 → 0.015 Vp-p) and leaves flat colours and colour-bar edges unchanged. It is
+   fitted to measurements of one console, not derived from a circuit.
 3. **The board's Y/C networks**, from Sega's NTSC schematics (Model 1, and the Model 2 CXA1145M parts
    list) with the topology confirmed against the PAL-G maintenance manual:
    * luma: R27 1.2k into L3 100 µH ∥ C35 12 pF, then C34 180 pF and R29 1k at Y IN — the "delay line"
-     is a low-pass with a trap near 3.75 MHz, which is why dithering blends on a Mega Drive;
+     is a low-pass with a trap near 4.6 MHz, which is why dithering blends on a Mega Drive. C35 is
+     12 pF as in the PAL-G parts list; two real NTSC Model 1s pass about twice as much of a 3.4 MHz
+     stripe as the 18 pF of some schematics would;
    * chroma: R28 1.2k into L5 12 µH ∥ C37 180 pF ∥ R26 330 Ω, a broad band-pass around 3.4 MHz.
 
    Both are solved as exact zero-order-hold state-space systems at the master clock.
@@ -71,7 +80,9 @@ What is modelled, in order:
      set's fixed 227.5-cycle 1H delay: the previous line half a cycle along still carries inverted
      chroma, where a line-locked comb would cancel the burst and the colour.
 
-   With a 4.7 µs sync and standard NTSC timing both behave exactly as the original.
+   The sync separator averages the signal over one subcarrier cycle before slicing it, as a set's
+   does, so the carrier on saturated colours is never taken for sync. With a 4.7 µs sync and standard NTSC timing, the burst gate and the comb behave exactly as the
+   original.
 
 Not modelled: the full-screen "rainbow banding" some Model 1 boards show, which comes from layout
 crosstalk with no published measurements; PAL (the decoder is an NTSC set).
