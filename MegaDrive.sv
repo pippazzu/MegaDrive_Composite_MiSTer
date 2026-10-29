@@ -948,14 +948,16 @@ wire [15:0] comp_brightness = status[69:67] == 3'd1 ? 16'hFE49 : status[69:67] =
 // The board leaves white at 0.645 V and sync at 0.264 V; the set's sync AGC
 // brings sync to 40 IRE, a gain of 1.084 that puts white at 0.700 V. 2856
 // maps 0.714 V to white, so the AGC'd set is contrast 3095.
-// 15 samples per subcarrier cycle, 3420 per line; 855 output pixels a line.
+// 15 samples per subcarrier cycle, 3420 per line; one output pixel every two,
+// 1710 a line (26.85 MHz: four per H40 pixel, five per H32 pixel), so the
+// scaler has 7.5 samples per subcarrier cycle to draw the decoded picture.
 // The comb's 1H delay is the set's 227.5 cycles (3412.5 samples): the
 // Mega Drive's lines are 228 cycles, so line-locked combing would cancel its
 // burst and chroma.
 wire comp_pix, comp_hs, comp_vs, comp_hb, comp_vb;
 wire [7:0] comp_r, comp_g, comp_b;
 
-composite_decoder #(.SPC(15), .HCNT_W(12), .LUMA_LP(8), .PK_SPAN(9), .PIX_DIV(4)) composite_decoder
+composite_decoder #(.SPC(15), .HCNT_W(12), .LUMA_LP(8), .PK_SPAN(9), .PIX_DIV(2)) composite_decoder
 (
 	.clk(CLK_VIDEO),
 	.reset(comp_reset),
@@ -986,26 +988,57 @@ assign VGA_F1 = use_composite ? 1'b0 : f1;
 
 wire lg_draw = lg_target && gun_mode && (~&status[44:43]);
 
-video_mixer #(.LINE_LENGTH(400), .GAMMA(1)) video_mixer
+// Gamma before the mixer: composite pixels come every two clocks, faster than
+// video_mixer's gamma_corr (one lookup per clock, three per pixel) can follow.
+// gamma_fast looks up R, G and B at once, with the same curve and the same
+// one-pixel delay.
+wire       vm_ce = use_composite ? comp_pix : ce_pix;
+wire       g_hs, g_vs, g_hb, g_vb;
+wire [7:0] g_r, g_g, g_b;
+gamma_fast gamma
+(
+	.clk_vid   (CLK_VIDEO),
+	.ce_pix    (vm_ce),
+	.gamma_bus (gamma_bus),
+
+	// Positive pulses.
+	.HSync     (use_composite ? comp_hs : hs_c),
+	.VSync     (use_composite ? comp_vs : vs_c),
+	.HBlank    (use_composite ? comp_hb : hblank_c),
+	.VBlank    (use_composite ? comp_vb : vblank_c),
+	.DE        (1'b0),
+	.RGB_in    (use_composite ? {comp_r, comp_g, comp_b} :
+	            lg_draw ? {{8{lg_target[0]}}, {8{lg_target[1]}}, {8{lg_target[2]}}} : {r_c, g_c, b_c}),
+
+	.HSync_out (g_hs),
+	.VSync_out (g_vs),
+	.HBlank_out(g_hb),
+	.VBlank_out(g_vb),
+	.DE_out    (),
+	.RGB_out   ({g_r, g_g, g_b})
+);
+
+wire [21:0] vm_gamma_bus;
+video_mixer #(.LINE_LENGTH(400), .GAMMA(0)) video_mixer
 (
 	.*,
+	.gamma_bus(vm_gamma_bus),
 
 	// The scandoubler and HQ2x are not built.
-	.ce_pix(use_composite ? comp_pix : ce_pix),
+	.ce_pix(vm_ce),
 	.scandoubler(1'b0),
 	.hq2x(1'b0),
 	.freeze_sync(),
 
 	.VGA_DE(vga_de),
-	.R(use_composite ? comp_r : lg_draw ? {8{lg_target[0]}} : r_c),
-	.G(use_composite ? comp_g : lg_draw ? {8{lg_target[1]}} : g_c),
-	.B(use_composite ? comp_b : lg_draw ? {8{lg_target[2]}} : b_c),
+	.R(g_r),
+	.G(g_g),
+	.B(g_b),
 
-	// Positive pulses.
-	.HSync(use_composite ? comp_hs : hs_c),
-	.VSync(use_composite ? comp_vs : vs_c),
-	.HBlank(use_composite ? comp_hb : hblank_c),
-	.VBlank(use_composite ? comp_vb : vblank_c)
+	.HSync(g_hs),
+	.VSync(g_vs),
+	.HBlank(g_hb),
+	.VBlank(g_vb)
 );
 
 

@@ -50,7 +50,13 @@ measured).
    leaves flat colours and colour-bar edges unchanged. A fit to one console, not a circuit model.
 5. **Composite filters**: Kitrinx's composite decoder from the NES core, run at 15 samples per
    subcarrier cycle, with the changes listed below. Its contrast input is fixed at what a set's
-   sync AGC gives for this console's sync level.
+   sync AGC gives for this console's sync level. One output pixel every two samples: 26.85 MHz,
+   1710 a line, four per H40 pixel and five per H32 pixel, so the scaler has 7.5 samples per
+   subcarrier cycle to draw the decoded picture with (one in four left it 3.75).
+6. **Gamma**: the decoded pixels come every two clocks, too fast for the gamma block inside
+   `video_mixer`, which looks R, G and B up one after another and needs four clocks per pixel.
+   The core uses the framework's `gamma_fast` instead, on both paths, which looks the three up at
+   once from the same curve with the same one-pixel delay.
 
 Not implemented: interlaced sync, PAL.
 
