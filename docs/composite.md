@@ -75,7 +75,7 @@ The decoder is Kitrinx's from the NES core (MIT licence; the changes are MIT too
   6.0 and 8.5 µs after the leading edge, as before.
 * **Chroma is blanked** until the back porch is over (3.8 µs after sync ends), as a set blanks it
   through horizontal blanking, so the long burst is never shown.
-* **Premium TV comb** uses a set's fixed 227.5-cycle delay instead of one line of the source. Mega
+* **Comb** (not used by this core, which runs the decoder with its notch only) uses a set's fixed 227.5-cycle delay instead of one line of the source. Mega
   Drive lines are 228 cycles, so a delay of one source line would meet chroma in phase and cancel
   the burst and the colour.
 * **Sync separator** slices the signal averaged over one subcarrier cycle, as a set's does through
@@ -87,7 +87,8 @@ The decoder is Kitrinx's from the NES core (MIT licence; the changes are MIT too
   notch's half-cycle delay is then the mean of the two samples around it, and the comb's half-sample
   delay likewise.
 * Not changing the picture: the sharpness filter's tap spacing is a parameter, two products are
-  folded into one each (same results), and the comb's line store is a RAM inside the decoder rather
+  folded into one each (same results), the filters' delay lines are block RAM (cleared while reset is held, so reset
+  must last at least 40 clocks), and the comb's line store is a RAM inside the decoder rather
   than the core's dpram.
 
 With a 4.7 µs sync and standard NTSC timing, the decoder gives the same picture as the original.

@@ -100,9 +100,9 @@ localparam CONF_STR = {
 	"d5P1O[53:50],Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
 	"P1O[55:54],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"P1-;",
-	"H8P1O[66:65],Composite Filter,Off,Budget TV,Premium TV;",
+	"H8P1O[66:65],Composite Filter,Off,On;",
 	"h9P1O[69:67],Comp. Brightness,Japan,USA,More,Much More,Too Much;",
-	"h9P1O[71:70],Comp. Sharpness,Off,Low,Medium,High;",
+	"h9P1O[71:70],Comp. Sharpness,Medium,High,Off,Low;",
 	"P1-;",
 	"H9P1O[30],320x224 Aspect,Original,Corrected;",
 	"H9P1O[29],Border,No,Yes;",
@@ -223,11 +223,13 @@ wire[127:0] status;
 
 // Composite video through the CXA1145 encoder and the board's Y/C networks,
 // decoded by a modelled TV. NTSC only: the decoder is an NTSC set.
-// Budget TV: notch separation and a narrow chroma band. Premium TV: adaptive
-// comb and a wider chroma band.
+// The set separates luma and chroma with a notch and has a narrow chroma band.
+// Either bit turns it on: 2 was the Premium TV (comb) setting of earlier
+// builds, and a configuration saved with it now gets this set.
 wire  [1:0] composite_set = status[66:65];
 wire        use_composite = (composite_set != 2'd0) && !PAL;
-wire        composite_premium = (composite_set == 2'd2);
+// Sharpness: the menu starts at Medium (status 0), then High, Off, Low.
+wire  [1:0] comp_sharp = status[71:70] + 2'd2;
 wire  [1:0] buttons;
 wire [11:0] joystick_0,joystick_1,joystick_2,joystick_3,joystick_4;
 wire  [7:0] joy0_x,joy0_y,joy1_x,joy1_y;
@@ -957,7 +959,7 @@ wire [15:0] comp_brightness = status[69:67] == 3'd1 ? 16'hFE49 : status[69:67] =
 wire comp_pix, comp_hs, comp_vs, comp_hb, comp_vb;
 wire [7:0] comp_r, comp_g, comp_b;
 
-composite_decoder #(.SPC(15), .HCNT_W(12), .LUMA_LP(8), .PK_SPAN(9), .PIX_DIV(2)) composite_decoder
+composite_decoder #(.SPC(15), .HCNT_W(12), .LUMA_LP(8), .PK_SPAN(9), .PIX_DIV(2), .COMB(0)) composite_decoder
 (
 	.clk(CLK_VIDEO),
 	.reset(comp_reset),
@@ -965,12 +967,12 @@ composite_decoder #(.SPC(15), .HCNT_W(12), .LUMA_LP(8), .PK_SPAN(9), .PIX_DIV(2)
 	.comp(cvbs),
 	.sat(8'd128),
 	.hue(8'd0),
-	.chroma_trail(composite_premium ? 4'd2 : 4'd3),
-	.sharpness({status[71:70], 2'b00}),
+	.chroma_trail(4'd3),
+	.sharpness({comp_sharp, 2'b00}),
 	.black_stretch(2'd0),
 	.brightness(comp_brightness),
 	.contrast(16'd3095),
-	.comb_mode(composite_premium ? 2'd2 : 2'd0),
+	.comb_mode(2'd0),
 	.ce_out(),
 	.pix_out(comp_pix),
 	.hs_out(comp_hs),

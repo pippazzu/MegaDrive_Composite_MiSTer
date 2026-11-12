@@ -10,7 +10,9 @@
 // half-cycle notch delay as the mean of the two samples around it, the
 // peaking span is a parameter, two products are folded into one each without
 // changing results, and the comb's line store is inferred here rather than
-// taken from the core's dpram.
+// taken from the core's dpram. The filters' delay lines are block RAM
+// (cd_delay), cleared by writing zeros while reset is high: hold reset for at
+// least 40 clocks.
 
 module composite_decoder #(
 	// Samples per subcarrier cycle. When EVEN the notch delay SPC/2 is a whole
@@ -33,6 +35,9 @@ module composite_decoder #(
 	// whatever the source does, so a source with 228 cycles a line still
 	// meets inverted chroma half a cycle along.
 	parameter COMB_HALF = 455 * SPC,
+	// 0 leaves the comb and its line store out: comb_mode is then ignored and
+	// luma and chroma are always separated by the notch.
+	parameter COMB = 1,
 	// Decoded samples per output pixel, a power of two. The pixel enable is
 	// phase locked to the line so a scaler sees a stable grid.
 	parameter PIX_DIV = 1,
@@ -166,16 +171,15 @@ logic vs_i, vb_i;
 localparam integer LEAD_LAG  = (SPC * 3) / 5;
 localparam integer TRAIL_LAG = (SPC * 8) / 15;
 
-logic signed [23:0] sy_dl [SPC];
+wire  signed [23:0] sy_old;
 logic signed [27:0] sy_sum;
 
+cd_delay #(.W(24), .N(SPC)) sy_dl (.clk(clk), .reset(reset), .ce(ce), .d(comp), .q(sy_old));
+
 always_ff @(posedge clk) if (reset) begin
-	for (int i = 0; i < SPC; i++) sy_dl[i] <= 24'sd0;
 	sy_sum <= 28'sd0;
 end else if (ce) begin
-	sy_dl[0] <= comp;
-	for (int i = 1; i < SPC; i++) sy_dl[i] <= sy_dl[i - 1];
-	sy_sum <= sy_sum + comp - sy_dl[SPC - 1];
+	sy_sum <= sy_sum + comp - sy_old;
 end
 
 always_ff @(posedge clk) if (reset) begin
@@ -267,10 +271,6 @@ end else if (ce) begin
 end
 
 logic signed [15:0] prev;
-logic [15:0] linebuf[1 << HCNT_W];
-
-// Block RAM powers up cleared; say so for simulation too.
-initial for (int k = 0; k < (1 << HCNT_W); k++) linebuf[k] = 16'd0;
 
 // x[n] is written as it leaves c16; the read runs two samples ahead so that
 // the value registered into prev meets the next c16. An odd COMB_HALF takes
@@ -285,10 +285,21 @@ wire  signed [16:0] comb_mid = $signed(comb_rd) + $signed(comb_rd_d);
 /* verilator lint_on UNUSEDSIGNAL */
 wire  signed [15:0] comb_prev = (COMB_HALF % 2) ? comb_mid[16:1] : $signed(comb_rd);
 
-always_ff @(posedge clk) if (ce) begin
-	linebuf[comb_wp] <= $unsigned(c16);
-	comb_rd <= linebuf[comb_ra];
-end
+generate
+	if (COMB) begin : comb_store
+		logic [15:0] linebuf[1 << HCNT_W];
+
+		// Block RAM powers up cleared; say so for simulation too.
+		initial for (int k = 0; k < (1 << HCNT_W); k++) linebuf[k] = 16'd0;
+
+		always_ff @(posedge clk) if (ce) begin
+			linebuf[comb_wp] <= $unsigned(c16);
+			comb_rd <= linebuf[comb_ra];
+		end
+	end else begin : no_comb
+		assign comb_rd = 16'd0;
+	end
+endgenerate
 
 logic [1:0] lines_seen;
 
@@ -305,13 +316,17 @@ end else if (ce) begin
 end
 
 
-logic [HALFC-1+ODD_SPC:0][15:0] nd;
+// c16 half a cycle back: HALFC samples, and one more when SPC is odd.
+wire  [15:0] nd_lo;
+logic [15:0] nd_hi;
 logic signed [15:0] yc, cc, yc_d, y_lp;
 
+cd_delay #(.W(16), .N(HALFC), .CLR_IN(0)) nd (.clk(clk), .reset(reset), .ce(ce), .d($unsigned(c16)), .q(nd_lo));
+
 /* verilator lint_off UNUSEDSIGNAL */
-wire signed [16:0] c_mid = $signed(nd[HALFC-1]) + $signed(nd[HALFC-1+ODD_SPC]);
+wire signed [16:0] c_mid = $signed(nd_lo) + $signed(nd_hi);
 /* verilator lint_on UNUSEDSIGNAL */
-wire signed [15:0] c_del = ODD_SPC ? c_mid[16:1] : $signed(nd[HALFC-1]);
+wire signed [15:0] c_del = ODD_SPC ? c_mid[16:1] : $signed(nd_lo);
 /* verilator lint_off UNUSEDSIGNAL */
 wire signed [16:0] n_sum = c16 + c_del;     // notch luma
 wire signed [16:0] n_dif = c16 - c_del;     // notch chroma
@@ -331,7 +346,7 @@ wire [31:0] dacc_d = dacc_n * BOX_RECIP[15:0];
 wire [15:0] d_mean = dacc_d[31:16];
 /* verilator lint_on UNUSEDSIGNAL */
 wire [4:0] alpha_adapt = (d_mean[15:5] >= 11'd16) ? 5'd0 : 5'd16 - {1'b0, d_mean[8:5]};
-wire [4:0] alpha_n = (comb_mode == 2'd1) ? 5'd16 : (comb_mode == 2'd2) ? alpha_adapt : 5'd0;
+wire [4:0] alpha_n = !COMB ? 5'd0 : (comb_mode == 2'd1) ? 5'd16 : (comb_mode == 2'd2) ? alpha_adapt : 5'd0;
 
 /* verilator lint_off UNUSEDSIGNAL */
 // alpha v + (16 - alpha) n, as 16 n + alpha (v - n): one product each.
@@ -346,7 +361,7 @@ wire signed [16:0] y_sum = yc + yc_d;
 /* verilator lint_on UNUSEDSIGNAL */
 
 always_ff @(posedge clk) if (reset) begin
-	nd <= '0;
+	nd_hi <= 16'd0;
 	dbuf <= '0;
 	dacc <= 16'd0;
 	alpha <= 5'd0;
@@ -355,7 +370,7 @@ always_ff @(posedge clk) if (reset) begin
 	yc_d <= 16'sd0;
 	y_lp <= 16'sd0;
 end else if (ce) begin
-	nd    <= {nd[HALFC-2+ODD_SPC:0], c16};
+	nd_hi <= nd_lo;
 	dbuf  <= {dbuf[SPC-2:0], v_abs};
 	dacc  <= dacc_n;
 	alpha <= alpha_n;
@@ -478,12 +493,11 @@ end else if (ce) begin
 	q_dem <= -q_mul[26:9];
 end
 
-logic [SPC-1:0][17:0] ibuf, qbuf;
 logic signed [21:0] iacc, qacc;
 logic signed [17:0] ibox, qbox;
 
-wire signed [17:0] i_old = $signed(ibuf[SPC-1]);
-wire signed [17:0] q_old = $signed(qbuf[SPC-1]);
+wire signed [17:0] i_old, q_old;
+cd_delay #(.W(36), .N(SPC), .CLR_IN(0)) iqbuf (.clk(clk), .reset(reset), .ce(ce), .d({i_dem, q_dem}), .q({i_old, q_old}));
 wire signed [21:0] iacc_n = iacc + {{4{i_dem[17]}}, i_dem} - {{4{i_old[17]}}, i_old};
 wire signed [21:0] qacc_n = qacc + {{4{q_dem[17]}}, q_dem} - {{4{q_old[17]}}, q_old};
 /* verilator lint_off UNUSEDSIGNAL */
@@ -492,15 +506,11 @@ wire signed [38:0] qacc_d = qacc_n * $signed({1'b0, BOX_RECIP[16:0]});
 /* verilator lint_on UNUSEDSIGNAL */
 
 always_ff @(posedge clk) if (reset) begin
-	ibuf <= '0;
-	qbuf <= '0;
 	iacc <= 22'sd0;
 	qacc <= 22'sd0;
 	ibox <= 18'sd0;
 	qbox <= 18'sd0;
 end else if (ce) begin
-	ibuf <= {ibuf[SPC-2:0], i_dem};
-	qbuf <= {qbuf[SPC-2:0], q_dem};
 	iacc <= iacc_n;
 	qacc <= qacc_n;
 	ibox <= iacc_d[33:16];
@@ -643,19 +653,17 @@ end
 logic signed [15:0] y_bw;
 generate
 	if (LUMA_LP > 1) begin : luma_lp
-		logic [LUMA_LP-1:0][15:0] lbuf;
 		logic signed [20:0] lacc;
-		wire signed [15:0] l_old = $signed(lbuf[LUMA_LP-1]);
+		wire signed [15:0] l_old;
+		cd_delay #(.W(16), .N(LUMA_LP), .CLR_IN(0)) lbuf (.clk(clk), .reset(reset), .ce(ce), .d($unsigned(y_lp)), .q(l_old));
 		wire signed [20:0] lacc_n = lacc + {{5{y_lp[15]}}, y_lp} - {{5{l_old[15]}}, l_old};
 		/* verilator lint_off UNUSEDSIGNAL */
 		wire signed [37:0] lacc_d = lacc_n * $signed({1'b0, LP_RECIP[16:0]});
 		/* verilator lint_on UNUSEDSIGNAL */
 		always_ff @(posedge clk) if (reset) begin
-			lbuf <= '0;
 			lacc <= 21'sd0;
 			y_bw <= 16'sd0;
 		end else if (ce) begin
-			lbuf <= {lbuf[LUMA_LP-2:0], y_lp};
 			lacc <= lacc_n;
 			y_bw <= lacc_d[31:16];
 		end
@@ -664,10 +672,10 @@ generate
 	end
 endgenerate
 
-logic [2*PK_SPAN-1:0][15:0] pkbuf;
+// Two taps PK_SPAN apart: the second line is fed from the first one's end.
 logic signed [15:0] y_pk;
-wire signed [15:0] pk_mid = $signed(pkbuf[PK_SPAN-1]);
-wire signed [15:0] pk_old = $signed(pkbuf[2*PK_SPAN-1]);
+wire signed [15:0] pk_mid, pk_old;
+cd_delay #(.W(32), .N(PK_SPAN)) pkbuf (.clk(clk), .reset(reset), .ce(ce), .d({pk_mid, y_bw}), .q({pk_old, pk_mid}));
 wire signed [17:0] pk_diff = {pk_mid[15], pk_mid, 1'b0} - {{2{y_bw[15]}}, y_bw} - {{2{pk_old[15]}}, pk_old};
 /* verilator lint_off UNUSEDSIGNAL */
 wire signed [22:0] pk_mul = pk_diff * $signed({1'b0, sharpness});
@@ -675,10 +683,8 @@ wire signed [18:0] pk_sum = {{3{pk_mid[15]}}, pk_mid} + {{1{pk_mul[22]}}, pk_mul
 /* verilator lint_on UNUSEDSIGNAL */
 
 always_ff @(posedge clk) if (reset) begin
-	pkbuf <= '0;
 	y_pk <= 16'sd0;
 end else if (ce) begin
-	pkbuf <= {pkbuf[2*PK_SPAN-2:0], y_bw};
 	if      (pk_sum >  19'sd32767) y_pk <=  16'sd32767;
 	else if (pk_sum < -19'sd32768) y_pk <= -16'sd32768;
 	else                           y_pk <=  pk_sum[15:0];
@@ -687,16 +693,26 @@ end
 // Luma delay line matched to the chroma trail's mean delay.
 wire [3:0] luma_delay = (chroma_trail == 4'd0) ? 4'd0 : (chroma_trail >= 4'd4) ? 4'd15 : 4'((1 << chroma_trail) - 1);
 
-logic [15:0][15:0] ybuf;
-logic signed [15:0] y_dly, y_pipe;
+// y_dly is y_pk from luma_delay + 2 samples back: 32 cells, so the read is
+// never the cell being written. Cleared like cd_delay's store.
+(* ramstyle = "M10K, no_rw_check" *) logic [15:0] ybuf[32];
+logic [4:0] yb_wp = 5'd0;
+logic [15:0] yb_rd = 16'd0;
+wire  [4:0] yb_ra = yb_wp - 5'd1 - {1'b0, luma_delay};
+wire signed [15:0] y_dly = $signed(yb_rd);
+logic signed [15:0] y_pipe;
+
+initial for (int k = 0; k < 32; k++) ybuf[k] = 16'd0;
+
+always_ff @(posedge clk) if (ce | reset) begin
+	ybuf[yb_wp] <= $unsigned(y_pk);       // zero while reset is high
+	yb_rd <= ybuf[yb_ra];
+	yb_wp <= yb_wp + 5'd1;
+end
 
 always_ff @(posedge clk) if (reset) begin
-	ybuf <= '0;
-	y_dly <= 16'sd0;
 	y_pipe <= 16'sd0;
 end else if (ce) begin
-	ybuf  <= {ybuf[14:0], y_pk};
-	y_dly <= $signed(ybuf[luma_delay]);
 	y_pipe <= y_dly;
 end
 
@@ -704,16 +720,7 @@ end
 logic signed [17:0] i_al, q_al;
 generate
 	if (ALIGN_DLY > 0) begin : chroma_wait
-		logic [ALIGN_DLY-1:0][17:0] ibuf_al, qbuf_al;
-		always_ff @(posedge clk) if (reset) begin
-			ibuf_al <= '0;
-			qbuf_al <= '0;
-		end else if (ce) begin
-			ibuf_al <= {ibuf_al[ALIGN_DLY-2:0], i_sm};
-			qbuf_al <= {qbuf_al[ALIGN_DLY-2:0], q_sm};
-		end
-		assign i_al = $signed(ibuf_al[ALIGN_DLY-1]);
-		assign q_al = $signed(qbuf_al[ALIGN_DLY-1]);
+		cd_delay #(.W(36), .N(ALIGN_DLY), .CLR_IN(0)) iqbuf_al (.clk(clk), .reset(reset), .ce(ce), .d({i_sm, q_sm}), .q({i_al, q_al}));
 	end else begin : chroma_direct
 		assign i_al = i_sm;
 		assign q_al = q_sm;

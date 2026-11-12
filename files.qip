@@ -12,6 +12,7 @@ set_global_assignment -name VHDL_FILE rtl/CEGen.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/cheatcodes.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/audio_cond.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/video_cond.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/composite/cd_delay.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/composite/md_cvbs_front.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/composite/cxa1145.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/composite/md_av_board.sv

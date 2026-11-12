@@ -242,25 +242,13 @@ end
 wire signed [31:0] c_m = u2 * sin2 + v2 * cos2;
 /* verilator lint_on UNUSEDSIGNAL */
 
-reg signed [23:0] y_d [4];
-reg signed [23:0] c_d [4];
+// Four clocks in block RAM, cleared while reset is high (see cd_delay).
+wire signed [23:0] y_d3, c_d3;
+cd_delay #(.W(48), .N(4)) yc_d (.clk(clk), .reset(reset), .ce(1'b1), .d({y2, c_m[29:6]}), .q({y_d3, c_d3}));
 
 always @(posedge clk) begin
-	if (reset) begin
-		for (int i = 0; i < 4; i++) begin
-			y_d[i] <= 24'sd0;
-			c_d[i] <= 24'sd0;
-		end
-	end else begin
-		y_d[0] <= y2;
-		c_d[0] <= c_m[29:6];
-		for (int i = 1; i < 4; i++) begin
-			y_d[i] <= y_d[i-1];
-			c_d[i] <= c_d[i-1];
-		end
-	end
-	y_out <= y_d[3] + o3r[23:0];
-	c_out <= c_d[3];
+	y_out <= y_d3 + o3r[23:0];
+	c_out <= c_d3;
 end
 
 endmodule
