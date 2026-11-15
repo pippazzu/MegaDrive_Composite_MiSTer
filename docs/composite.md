@@ -95,8 +95,9 @@ With a 4.7 µs sync and standard NTSC timing, the decoder gives the same picture
 
 ## Build
 
-Quartus 17.0.2 Lite, seed 24 (best of 32). Logic 81%, DSP blocks 95/112, RAM blocks 437/553 (79%).
-Worst setup slack is −0.041 ns, on three paths from `md_reset` to the write enable of the 68000 work
-RAM, which only change at the start and end of a reset (the RAM clear); hold slack is +0.001 ns. The
-untouched Nuked-MD core at its own seed misses by −0.119 ns. Removing the scandoubler, HQ2x, scanline
+Quartus 17.0.2 Lite, seed 39 (best of 10 tried for this version). Logic 81% (33,841 ALMs), DSP blocks
+99/112, RAM blocks 438/553 (79%). Worst setup slack is −0.004 ns, on one path on the 53.7 MHz clock from
+the board's address bus (`VA[14]`) to the write enable of the cartridge save RAM; every other setup
+slack passes, and hold slack is +0.18 ns or more. With Premium TV, 40 seeds gave no better than −0.120 ns.
+The untouched Nuked-MD core at its own seed misses by −0.119 ns. Removing the scandoubler, HQ2x, scanline
 effects and Y/C output frees about 1,100 logic cells and 14 memory blocks.
